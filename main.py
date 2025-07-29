@@ -18,31 +18,30 @@ def get_role_name(role):
     return str(role)
 
 
-# Get URL parameters for API keys
-def get_url_params():
-    supabase_url = st.query_params.get("supabase_url")
-    supabase_key = st.query_params.get("supabase_key")
-    or_api_key = st.query_params.get("or_api_key")
-    print(supabase_key, or_api_key)
+# Get secret parameters for API keys
+def get_secrets_params():
+    supabase_url = st.secrets.get("supabase_url")
+    supabase_key = st.secrets.get("supabase_key")
+    or_api_key = st.secrets.get("or_api_key")
     return supabase_url, supabase_key, or_api_key
 
 
-# Get API keys from URL parameters
-supabase_url, supabase_service_key, openrouter_api_key = get_url_params()
+# Get API keys from secret parameters
+supabase_url, supabase_service_key, openrouter_api_key = get_secrets_params()
 
 # Supabase setup
 if not supabase_service_key:
-    st.error("Please provide supabase_key (service key) in URL parameters")
+    st.error("Please provide supabase_key (service key) in app's secrets")
     st.stop()
 if not supabase_url:
-    st.error("Please provide supabase_url (db url) in URL parameters")
+    st.error("Please provide supabase_url (db url) in app's secrets")
     st.stop()
 
 supabase: Client = create_client(supabase_url, supabase_service_key)
 
 # OpenRouter client setup (using OpenAI SDK)
 if not openrouter_api_key:
-    st.error("Please provide or_api_key (openrouter) in URL parameters")
+    st.error("Please provide or_api_key (openrouter) in app's secrets")
     st.stop()
 
 openai_client = OpenAI(
