@@ -2,6 +2,8 @@ import streamlit as st
 from supabase import create_client, Client
 from openai import OpenAI
 import asyncio
+# Add this import
+import invitation_api
 
 # Role mapping
 ROLE_MAPPING = {0: "doctor", 1: "physio", 2: "nurse"}
@@ -320,6 +322,270 @@ if sessions:
                     st.error("No transcript available for this session")
 else:
     st.warning("No sessions found in the database")
+
+# User Invitation Management
+st.header("User Invitation Management")
+
+# Create tabs for different invitation functions
+invite_tab1, invite_tab2, invite_tab3 = st.tabs(["Single Invitation", "Bulk Invitations", "User Management"])
+
+with invite_tab1:
+    st.subheader("Send Single Invitation")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        single_email = st.text_input("Email Address", placeholder="user@example.com")
+    
+    with col2:
+        single_role = st.selectbox(
+            "Role", 
+            options=list(ROLE_MAPPING.keys()), 
+            format_func=lambda x: f"{ROLE_MAPPING[x]} ({x})"
+        )
+    
+    single_redirect = st.text_input(
+        "Redirect URL (optional)", 
+        value="https://app.zeromedwait.com/auth/sign-up",
+        help="URL where user will be redirected after clicking invitation link"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Send Invitation", type="primary"):
+            if single_email:
+                with st.spinner(f"Sending invitation to {single_email}..."):
+                    # Use the same supabase client from main app
+                    result = invitation_api.send_invitation(
+                        single_email, 
+                        single_role, 
+                        supabase, 
+                        single_redirect if single_redirect else None
+                    )
+                    
+                    if result["success"]:
+                        st.success(f"✅ {result['message']}")
+                    else:
+                        st.error(f"❌ {result['message']}")
+            else:
+                st.warning("Please enter an email address")
+    
+    with col2:
+        if st.button("Delete User First, Then Invite"):
+            if single_email:
+                with st.spinner(f"Processing {single_email}..."):
+                    # Delete first
+                    delete_result = invitation_api.delete_user_by_email(single_email, supabase)
+                    
+                    if delete_result["success"]:
+                        st.info(f"🗑️ {delete_result['message']}")
+                    else:
+                        st.warning(f"ℹ️ {delete_result['message']}")
+                    
+                    # Then invite
+                    invite_result = invitation_api.send_invitation(
+                        single_email, 
+                        single_role, 
+                        supabase, 
+                        single_redirect if single_redirect else None
+                    )
+                    
+                    if invite_result["success"]:
+                        st.success(f"✅ {invite_result['message']}")
+                    else:
+                        st.error(f"❌ {invite_result['message']}")
+            else:
+                st.warning("Please enter an email address")
+
+with invite_tab2:
+    st.subheader("Bulk Invitations")
+    
+    # Bulk invitation input methods
+    bulk_method = st.radio(
+        "Choose input method:",
+        ["Text Area (one email per line)", "CSV Format"]
+    )
+    
+    if bulk_method == "Text Area (one email per line)":
+        bulk_emails_text = st.text_area(
+            "Email Addresses (one per line)",
+            placeholder="user1@example.com\nuser2@example.com\nuser3@example.com",
+            height=150
+        )
+        
+        bulk_default_role = st.selectbox(
+            "Default Role for all users", 
+            options=list(ROLE_MAPPING.keys()), 
+            format_func=lambda x: f"{ROLE_MAPPING[x]} ({x})"
+        )
+        
+        if bulk_emails_text:
+            email_list = [email.strip() for email in bulk_emails_text.split('\n') if email.strip()]
+            st.info(f"Found {len(email_list)} email addresses")
+            
+            # Preview
+            with st.expander("Preview Email List"):
+                for i, email in enumerate(email_list, 1):
+                    st.write(f"{i}. {email} → {ROLE_MAPPING[bulk_default_role]}")
+    
+    else:  # CSV Format
+        bulk_emails_csv = st.text_area(
+            "CSV Format (email,role)",
+            placeholder="user1@example.com,0\nuser2@example.com,1\nuser3@example.com,2",
+            help="Format: email,role (where role: 0=doctor, 1=physio, 2=nurse)",
+            height=150
+        )
+        
+        if bulk_emails_csv:
+            email_list = []
+            for line in bulk_emails_csv.split('\n'):
+                line = line.strip()
+                if line:
+                    parts = line.split(',')
+                    if len(parts) >= 2:
+                        email = parts[0].strip()
+                        try:
+                            role = int(parts[1].strip())
+                            email_list.append((email, role))
+                        except ValueError:
+                            st.warning(f"Invalid role for {email}, using default role 0")
+                            email_list.append((email, 0))
+                    elif len(parts) == 1:
+                        email_list.append((parts[0].strip(), 0))
+            
+            st.info(f"Found {len(email_list)} email addresses")
+            
+            # Preview
+            with st.expander("Preview Email List"):
+                for i, (email, role) in enumerate(email_list, 1):
+                    role_name = ROLE_MAPPING.get(role, f"role_{role}")
+                    st.write(f"{i}. {email} → {role_name}")
+    
+    bulk_redirect = st.text_input(
+        "Redirect URL for all invitations", 
+        value="https://app.zeromedwait.com/auth/sign-up"
+    )
+    
+    # Bulk actions
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Send All Invitations", type="primary"):
+            if 'email_list' in locals() and email_list:
+                with st.spinner(f"Sending {len(email_list)} invitations..."):
+                    if bulk_method == "Text Area (one email per line)":
+                        result = invitation_api.bulk_invite(
+                            email_list, 
+                            bulk_default_role, 
+                            supabase, 
+                            bulk_redirect
+                        )
+                    else:
+                        result = invitation_api.bulk_invite(
+                            email_list, 
+                            0,  # Default role (will be overridden by individual roles)
+                            supabase, 
+                            bulk_redirect
+                        )
+                    
+                    # Display results
+                    summary = result.get("summary", {})
+                    st.success(f"✅ Completed: {summary.get('successful', 0)} successful, {summary.get('failed', 0)} failed")
+                    
+                    # Show detailed results
+                    with st.expander("Detailed Results"):
+                        for res in result.get("results", []):
+                            status = "✅" if res.get("success") else "❌"
+                            st.write(f"{status} {res['email']} (role: {ROLE_MAPPING.get(res.get('role', 0))}) - {res.get('message', 'No message')}")
+            else:
+                st.warning("Please enter email addresses")
+    
+    with col2:
+        if st.button("Delete All Users First, Then Invite"):
+            if 'email_list' in locals() and email_list:
+                with st.spinner(f"Processing {len(email_list)} users..."):
+                    # First delete all users
+                    delete_results = []
+                    for item in email_list:
+                        email = item[0] if isinstance(item, tuple) else item
+                        delete_result = invitation_api.delete_user_by_email(email, supabase)
+                        delete_results.append({"email": email, **delete_result})
+                    
+                    # Then send all invitations
+                    if bulk_method == "Text Area (one email per line)":
+                        invite_result = invitation_api.bulk_invite(
+                            email_list, 
+                            bulk_default_role, 
+                            supabase, 
+                            bulk_redirect
+                        )
+                    else:
+                        invite_result = invitation_api.bulk_invite(
+                            email_list, 
+                            0,
+                            supabase, 
+                            bulk_redirect
+                        )
+                    
+                    # Display results
+                    summary = invite_result.get("summary", {})
+                    st.success(f"✅ Completed: {summary.get('successful', 0)} invitations sent, {summary.get('failed', 0)} failed")
+                    
+                    # Show detailed results
+                    with st.expander("Detailed Results"):
+                        st.write("**Deletion Results:**")
+                        for res in delete_results:
+                            status = "🗑️" if res.get("success") else "ℹ️"
+                            st.write(f"{status} {res['email']} - {res.get('message', 'No message')}")
+                        
+                        st.write("**Invitation Results:**")
+                        for res in invite_result.get("results", []):
+                            status = "✅" if res.get("success") else "❌"
+                            st.write(f"{status} {res['email']} (role: {ROLE_MAPPING.get(res.get('role', 0))}) - {res.get('message', 'No message')}")
+            else:
+                st.warning("Please enter email addresses")
+
+with invite_tab3:
+    st.subheader("User Management")
+    
+    if st.button("List All Users", type="secondary"):
+        with st.spinner("Fetching all users..."):
+            users = invitation_api.list_all_users(supabase)
+            
+            if users:
+                st.success(f"Found {len(users)} users")
+                
+                # Display users in a nice format
+                for i, user in enumerate(users, 1):
+                    with st.expander(f"User {i}: {user.email}"):
+                        st.json({
+                            "id": user.id,
+                            "email": user.email,
+                            "created_at": str(user.created_at),
+                            "last_sign_in_at": str(user.last_sign_in_at) if user.last_sign_in_at else "Never",
+                            "email_confirmed_at": str(user.email_confirmed_at) if user.email_confirmed_at else "Not confirmed",
+                            "user_metadata": user.user_metadata
+                        })
+            else:
+                st.info("No users found")
+    
+    st.divider()
+    
+    st.subheader("Delete Individual User")
+    delete_email = st.text_input("Email to delete", placeholder="user@example.com")
+    
+    if st.button("Delete User", type="secondary"):
+        if delete_email:
+            with st.spinner(f"Deleting user {delete_email}..."):
+                result = invitation_api.delete_user_by_email(delete_email, supabase)
+                
+                if result["success"]:
+                    st.success(f"✅ {result['message']}")
+                else:
+                    st.warning(f"ℹ️ {result['message']}")
+        else:
+            st.warning("Please enter an email address")
 
 # Display usage instructions
 with st.expander("Usage Instructions"):
