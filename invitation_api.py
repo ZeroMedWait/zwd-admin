@@ -2,6 +2,7 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import time
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -54,15 +55,32 @@ def send_invitation(email, role=0):
         response = supabase.auth.admin.invite_user_by_email(
             email=email,
             options={
-                "redirect_to": "https://app.zeromedwait.com/auth/sign-up",
-                "data": {"role": role, "invited_by": "admin"}
+                "redirect_to": "https://app.zeromedwait.com/auth/sign-up?invite=true",
+                "data": {
+                    "role": role, 
+                    "invited_by": "admin",
+                    "invited_at": datetime.now().isoformat()
+                }
             }
         )
         print(f"✅ Invitation sent to {email}")
+        print(f"⏰ Link expires in 1 hour (default Supabase setting)")
         return True
     except Exception as e:
         print(f"❌ Error sending invitation: {str(e)}")
         return False
+
+def resend_invitation(email, role=0):
+    """Resend invitation if previous one expired"""
+    print(f"🔄 Resending invitation to {email}...")
+    
+    # Delete existing user if they were created but didn't complete signup
+    delete_result = delete_user_by_email(email)
+    if delete_result:
+        print(f"🗑️ Removed incomplete user record for {email}")
+    
+    # Send fresh invitation
+    return send_invitation(email, role)
 
 def main():
     """Main function to run invitation script"""
@@ -71,13 +89,8 @@ def main():
     
     email = "zed.gta2001@gmail.com"
     
-    # Delete user first
-    print(f"\n🔍 Checking for existing user: {email}")
-    delete_user_by_email(email)
-    
-    # Send invitation
-    print(f"\n📧 Sending invitation to {email}...")
-    send_invitation(email, role=0)
+    print(f"\n📧 Resending fresh invitation to {email}...")
+    resend_invitation(email, role=0)
 
 if __name__ == "__main__":
     main()
