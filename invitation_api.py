@@ -87,7 +87,7 @@ def main():
     print("🔐 Supabase Email Invitation API")
     print("=" * 40)
     
-    email = "zed.gta2001@gmail.com"
+    email = "example@gmail.com"
     
     print(f"\n📧 Resending fresh invitation to {email}...")
     resend_invitation(email, role=0)

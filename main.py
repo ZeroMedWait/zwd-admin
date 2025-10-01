@@ -2,6 +2,36 @@ import streamlit as st
 from supabase import create_client, Client
 from openai import OpenAI
 import asyncio
+from datetime import datetime
+import time
+
+# Password protection
+def check_password():
+    """Returns True if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets.get("app_password", ""):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store the password in session state
+        else:
+            st.session_state["password_correct"] = False
+
+    # Return True if the password is validated.
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show input for password.
+    st.text_input(
+        "Password", type="password", on_change=password_entered, key="password"
+    )
+    if "password_correct" in st.session_state:
+        st.error("😕 Password incorrect")
+    return False
+
+# Check password before running the rest of the app
+if not check_password():
+    st.stop()  # Do not continue if check_password is not True.
 
 # Role mapping
 ROLE_MAPPING = {0: "doctor", 1: "physio", 2: "nurse"}
@@ -48,6 +78,53 @@ openai_client = OpenAI(
     api_key=openrouter_api_key, base_url="https://openrouter.ai/api/v1"
 )
 
+
+# Invitation functions
+def delete_user_by_email(email):
+    """Delete user by email (admin function)"""
+    try:
+        # Get all users
+        response = supabase.auth.admin.list_users()
+        users = response.users if hasattr(response, 'users') else []
+        
+        # Find and delete the user
+        for user in users:
+            if user.email == email:
+                supabase.auth.admin.delete_user(user.id)
+                time.sleep(1)  # Wait a moment for deletion to propagate
+                return True
+        
+        return False
+        
+    except Exception as e:
+        st.error(f"Error deleting user {email}: {str(e)}")
+        return False
+
+def send_invitation(email, role=0):
+    """Send invitation email using Supabase auth"""
+    try:
+        response = supabase.auth.admin.invite_user_by_email(
+            email=email,
+            options={
+                "redirect_to": "https://app.zeromedwait.com/auth/sign-up?invite=true",
+                "data": {
+                    "role": role, 
+                    "invited_by": "admin",
+                    "invited_at": datetime.now().isoformat()
+                }
+            }
+        )
+        return True, "Invitation sent successfully!"
+    except Exception as e:
+        return False, f"Error sending invitation: {str(e)}"
+
+def resend_invitation(email, role=0):
+    """Resend invitation if previous one expired"""
+    # Delete existing user if they were created but didn't complete signup
+    delete_result = delete_user_by_email(email)
+    
+    # Send fresh invitation
+    return send_invitation(email, role)
 
 # Function to call OpenRouter GPT-4o using OpenAI SDK
 def generate_report_with_gpt4o(transcript, prompt):
@@ -156,170 +233,254 @@ def update_prompt(prompt_id, new_text):
 # Streamlit app layout
 st.title("Admin Session and Prompt Manager")
 
-# Fetch data
-prompts = fetch_prompts()
-sessions = fetch_sessions()
+# Create tabs for better organization
+tab1, tab2, tab3 = st.tabs(["📧 User Invitations", "📝 Prompt Management", "📊 Report Generation"])
 
-# Group prompts by role for easier display
-prompts_by_role = {}
-for prompt in prompts:
-    role_name = get_role_name(prompt["role"])
-    prompts_by_role[role_name] = prompt
-
-st.header("Prompt Management")
-
-# Create columns for prompts
-prompt_updates = {}
-for role, prompt_data in prompts_by_role.items():
-    st.subheader(f"{role} Prompt")
-    new_text = st.text_area(
-        f"Prompt for {role}",
-        value=prompt_data["prompt"],
-        height=150,
-        key=f"prompt_{role}",
-    )
-    prompt_updates[role] = {
-        "id": prompt_data["id"],
-        "text": new_text,
-        "original": prompt_data["prompt"],
-    }
-
-    if st.button(f"Save {role} Prompt", key=f"save_{role}"):
-        update_prompt(prompt_data["id"], new_text)
-        st.success(f"{role} prompt updated successfully!")
-
-st.divider()
-
-# Session selection and report generation
-st.header("Report Generation")
-
-if sessions:
-    # Prepare session options
-    session_options = {}
-    for session in sessions:
-        # Count transcripts from the related transcripts data
-        transcripts = session.get("transcripts", [])
-        transcript_count = len(transcripts) if transcripts else 0
-        option_text = f"{session.get('title', 'Untitled')} (ID: {session['id']}, Transcripts: {transcript_count})"
-        session_options[session["id"]] = {"text": option_text, "data": session}
-
-    # Session dropdown
-    selected_session_id = st.selectbox(
-        "Select Session",
-        options=list(session_options.keys()),
-        format_func=lambda x: session_options[x]["text"],
-    )
-
-    if selected_session_id:
-        selected_session = session_options[selected_session_id]["data"]
-        session_transcripts = selected_session.get("transcripts", [])
-
-        st.subheader(f"Generate Reports for: {selected_session['title']}")
-
-        if not session_transcripts:
-            st.warning("No transcripts available for this session")
-        else:
-            # Transcript selection and viewing
-            st.write("**Transcript Selection & Viewing:**")
-
-            if len(session_transcripts) > 1:
-                transcript_options = {
-                    i: f"Transcript {i + 1} (ID: {t['id']})"
-                    for i, t in enumerate(session_transcripts)
-                }
-                selected_transcript_idx = st.selectbox(
-                    "Select Transcript",
-                    options=list(transcript_options.keys()),
-                    format_func=lambda x: transcript_options[x],
-                )
-                selected_transcript_data = session_transcripts[selected_transcript_idx]
+# Tab 1: User Invitations
+with tab1:
+    st.header("Send User Invitations")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        invitation_email = st.text_input(
+            "Email Address", 
+            placeholder="user@example.com",
+            help="Enter the email address to send an invitation to"
+        )
+    
+    with col2:
+        invitation_role = st.selectbox(
+            "Role", 
+            options=[0, 1, 2],
+            format_func=lambda x: ROLE_MAPPING[x].title(),
+            help="Select the role for the new user"
+        )
+    
+    col_send, col_resend = st.columns(2)
+    
+    with col_send:
+        if st.button("📨 Send Invitation", type="primary"):
+            if invitation_email:
+                if "@" in invitation_email and "." in invitation_email:
+                    with st.spinner("Sending invitation..."):
+                        success, message = send_invitation(invitation_email, invitation_role)
+                        if success:
+                            st.success(f"✅ {message}")
+                            st.info(f"📧 Invitation sent to: {invitation_email}")
+                            st.info(f"👤 Role: {ROLE_MAPPING[invitation_role].title()}")
+                            st.info(f"⏰ Link expires in 1 hour (Supabase default)")
+                        else:
+                            st.error(f"❌ {message}")
+                else:
+                    st.error("Please enter a valid email address")
             else:
-                st.info(f"Using transcript ID: {session_transcripts[0]['id']}")
-                selected_transcript_data = session_transcripts[0]
-
-            selected_transcript = selected_transcript_data.get("transcript", "")
-
-            # Display transcript content
-            with st.expander("📄 View Transcript Content", expanded=False):
-                if selected_transcript:
-                    st.text_area(
-                        "Transcript Content",
-                        value=selected_transcript,
-                        height=300,
-                        disabled=True,
-                        key="transcript_viewer",
-                    )
-                    st.caption(
-                        f"Transcript ID: {selected_transcript_data.get('id', 'Unknown')} | "
-                        f"Length: {len(selected_transcript)} characters"
-                    )
+                st.error("Please enter an email address")
+    
+    with col_resend:
+        if st.button("🔄 Resend Invitation"):
+            if invitation_email:
+                if "@" in invitation_email and "." in invitation_email:
+                    with st.spinner("Resending invitation..."):
+                        success, message = resend_invitation(invitation_email, invitation_role)
+                        if success:
+                            st.success("✅ Fresh invitation sent successfully!")
+                            st.info("🗑️ Any incomplete user record was removed")
+                            st.info(f"📧 New invitation sent to: {invitation_email}")
+                        else:
+                            st.error(f"❌ {message}")
                 else:
-                    st.warning("No transcript content available")
+                    st.error("Please enter a valid email address")
+            else:
+                st.error("Please enter an email address")
+    
+    st.divider()
+    
+    # Information section
+    with st.expander("ℹ️ Invitation Information"):
+        st.write("""
+        **How invitations work:**
+        - Invitations are sent via email using Supabase Auth
+        - Users receive a link to complete their registration
+        - Links expire after 1 hour (Supabase default)
+        - Users are automatically assigned the selected role
+        
+        **Role Types:**
+        - **Doctor**: Full access to medical features
+        - **Physio**: Physiotherapy-focused features
+        - **Nurse**: Nursing workflow features
+        
+        **Resend vs Send:**
+        - **Send**: Sends a new invitation (may fail if user already exists)
+        - **Resend**: Removes any incomplete user record and sends a fresh invitation
+        """)
 
-            st.divider()
+# Tab 2: Prompt Management  
+with tab2:
+    st.header("Prompt Management")
+    
+    # Fetch data
+    prompts = fetch_prompts()
+    
+    # Group prompts by role for easier display
+    prompts_by_role = {}
+    for prompt in prompts:
+        role_name = get_role_name(prompt["role"])
+        prompts_by_role[role_name] = prompt
 
-            # Individual report generation
-            st.write("**Individual Report Generation:**")
-            cols = st.columns(len(prompts_by_role))
+    # Create columns for prompts
+    prompt_updates = {}
+    for role, prompt_data in prompts_by_role.items():
+        st.subheader(f"{role} Prompt")
+        new_text = st.text_area(
+            f"Prompt for {role}",
+            value=prompt_data["prompt"],
+            height=150,
+            key=f"prompt_{role}",
+        )
+        prompt_updates[role] = {
+            "id": prompt_data["id"],
+            "text": new_text,
+            "original": prompt_data["prompt"],
+        }
 
-            for i, (role, prompt_data) in enumerate(prompts_by_role.items()):
-                with cols[i]:
-                    if st.button(f"Generate {role} Report", key=f"individual_{role}"):
-                        with st.spinner(f"Generating {role} report..."):
-                            current_prompt_text = prompt_updates[role]["text"]
+        if st.button(f"Save {role} Prompt", key=f"save_{role}"):
+            update_prompt(prompt_data["id"], new_text)
+            st.success(f"{role} prompt updated successfully!")
 
-                            if selected_transcript:
-                                report = generate_report_with_gpt4o(
-                                    selected_transcript, current_prompt_text
-                                )
+# Tab 3: Report Generation
+with tab3:
+    st.header("Report Generation")
+    
+    sessions = fetch_sessions()
+    
+    if sessions:
+        # Prepare session options
+        session_options = {}
+        for session in sessions:
+            # Count transcripts from the related transcripts data
+            transcripts = session.get("transcripts", [])
+            transcript_count = len(transcripts) if transcripts else 0
+            option_text = f"{session.get('title', 'Untitled')} (ID: {session['id']}, Transcripts: {transcript_count})"
+            session_options[session["id"]] = {"text": option_text, "data": session}
 
-                                with st.expander(f"{role} Report", expanded=True):
-                                    st.write(report)
-                            else:
-                                st.error("No transcript content available")
+        # Session dropdown
+        selected_session_id = st.selectbox(
+            "Select Session",
+            options=list(session_options.keys()),
+            format_func=lambda x: session_options[x]["text"],
+        )
 
-            st.divider()
+        if selected_session_id:
+            selected_session = session_options[selected_session_id]["data"]
+            session_transcripts = selected_session.get("transcripts", [])
 
-            # Parallel report generation
-            st.write("**Parallel Report Generation:**")
-            if st.button("Generate All Reports in Parallel", key="parallel_all"):
-                if selected_transcript:
-                    with st.spinner("Generating all reports in parallel..."):
-                        # Prepare async tasks
-                        async def run_parallel_generation():
-                            tasks = []
-                            for role, prompt_data in prompts_by_role.items():
+            st.subheader(f"Generate Reports for: {selected_session['title']}")
+
+            if not session_transcripts:
+                st.warning("No transcripts available for this session")
+            else:
+                # Transcript selection and viewing
+                st.write("**Transcript Selection & Viewing:**")
+
+                if len(session_transcripts) > 1:
+                    transcript_options = {
+                        i: f"Transcript {i + 1} (ID: {t['id']})"
+                        for i, t in enumerate(session_transcripts)
+                    }
+                    selected_transcript_idx = st.selectbox(
+                        "Select Transcript",
+                        options=list(transcript_options.keys()),
+                        format_func=lambda x: transcript_options[x],
+                    )
+                    selected_transcript_data = session_transcripts[selected_transcript_idx]
+                else:
+                    st.info(f"Using transcript ID: {session_transcripts[0]['id']}")
+                    selected_transcript_data = session_transcripts[0]
+
+                selected_transcript = selected_transcript_data.get("transcript", "")
+
+                # Display transcript content
+                with st.expander("📄 View Transcript Content", expanded=False):
+                    if selected_transcript:
+                        st.text_area(
+                            "Transcript Content",
+                            value=selected_transcript,
+                            height=300,
+                            disabled=True,
+                            key="transcript_viewer",
+                        )
+                        st.caption(
+                            f"Transcript ID: {selected_transcript_data.get('id', 'Unknown')} | "
+                            f"Length: {len(selected_transcript)} characters"
+                        )
+                    else:
+                        st.warning("No transcript content available")
+
+                st.divider()
+
+                # Individual report generation
+                st.write("**Individual Report Generation:**")
+                cols = st.columns(len(prompts_by_role))
+
+                for i, (role, prompt_data) in enumerate(prompts_by_role.items()):
+                    with cols[i]:
+                        if st.button(f"Generate {role} Report", key=f"individual_{role}"):
+                            with st.spinner(f"Generating {role} report..."):
                                 current_prompt_text = prompt_updates[role]["text"]
-                                task = generate_report_async(
-                                    selected_transcript, current_prompt_text, role
-                                )
-                                tasks.append(task)
 
-                            results = await asyncio.gather(*tasks)
-                            return results
+                                if selected_transcript:
+                                    report = generate_report_with_gpt4o(
+                                        selected_transcript, current_prompt_text
+                                    )
 
-                        # Run async tasks
-                        try:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            results = loop.run_until_complete(run_parallel_generation())
-                            loop.close()
+                                    with st.expander(f"{role} Report", expanded=True):
+                                        st.write(report)
+                                else:
+                                    st.error("No transcript content available")
 
-                            # Display results
-                            for result in results:
-                                with st.expander(
-                                    f"{result['role']} Report", expanded=True
-                                ):
-                                    st.write(result["report"])
+                st.divider()
 
-                            st.success("All reports generated successfully!")
+                # Parallel report generation
+                st.write("**Parallel Report Generation:**")
+                if st.button("Generate All Reports in Parallel", key="parallel_all"):
+                    if selected_transcript:
+                        with st.spinner("Generating all reports in parallel..."):
+                            # Prepare async tasks
+                            async def run_parallel_generation():
+                                tasks = []
+                                for role, prompt_data in prompts_by_role.items():
+                                    current_prompt_text = prompt_updates[role]["text"]
+                                    task = generate_report_async(
+                                        selected_transcript, current_prompt_text, role
+                                    )
+                                    tasks.append(task)
 
-                        except Exception as e:
-                            st.error(f"Error in parallel generation: {str(e)}")
-                else:
-                    st.error("No transcript available for this session")
-else:
-    st.warning("No sessions found in the database")
+                                results = await asyncio.gather(*tasks)
+                                return results
+
+                            # Run async tasks
+                            try:
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                results = loop.run_until_complete(run_parallel_generation())
+                                loop.close()
+
+                                # Display results
+                                for result in results:
+                                    with st.expander(
+                                        f"{result['role']} Report", expanded=True
+                                    ):
+                                        st.write(result["report"])
+
+                                st.success("All reports generated successfully!")
+
+                            except Exception as e:
+                                st.error(f"Error in parallel generation: {str(e)}")
+                    else:
+                        st.error("No transcript available for this session")
+    else:
+        st.warning("No sessions found in the database")
 
 # Display usage instructions
 with st.expander("Usage Instructions"):
