@@ -106,7 +106,7 @@ def send_invitation(email, role=0):
         response = supabase.auth.admin.invite_user_by_email(
             email=email,
             options={
-                "redirect_to": "https://app.zeromedwait.com/auth/sign-up?invite=true",
+                "redirect_to": f"https://app.zeromedwait.com/auth/sign-up?email={email}",
                 "data": {
                     "role": role, 
                     "invited_by": "admin",
