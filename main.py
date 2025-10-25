@@ -222,6 +222,11 @@ def fetch_prompts():
     response = supabase.table("soap_prompts").select("id, role, prompt").execute()
     return response.data
 
+# Fetch chat prompts from the database
+def fetch_chat_prompts():
+    response = supabase.table("chat_prompts").select("id, role, prompt").execute()
+    return response.data
+
 
 # Update a prompt in the database
 def update_prompt(prompt_id, new_text):
@@ -234,7 +239,7 @@ def update_prompt(prompt_id, new_text):
 st.title("Admin Session and Prompt Manager")
 
 # Create tabs for better organization
-tab1, tab2, tab3 = st.tabs(["📧 User Invitations", "📝 Prompt Management", "📊 Report Generation"])
+tab1, tab2, tab3, tab4 = st.tabs(["📧 User Invitations", "📝 SOAP Prompt Management", "💬 Chat Prompt Management", "📊 Report Generation"])
 
 # Tab 1: User Invitations
 with tab1:
@@ -315,9 +320,9 @@ with tab1:
         - **Resend**: Removes any incomplete user record and sends a fresh invitation
         """)
 
-# Tab 2: Prompt Management  
+# Tab 2: SOAP Prompt Management  
 with tab2:
-    st.header("Prompt Management")
+    st.header("SOAP Prompt Management")
     
     # Fetch data
     prompts = fetch_prompts()
@@ -331,12 +336,12 @@ with tab2:
     # Create columns for prompts
     prompt_updates = {}
     for role, prompt_data in prompts_by_role.items():
-        st.subheader(f"{role} Prompt")
+        st.subheader(f"{role} SOAP Prompt")
         new_text = st.text_area(
-            f"Prompt for {role}",
+            f"SOAP Prompt for {role}",
             value=prompt_data["prompt"],
             height=150,
-            key=f"prompt_{role}",
+            key=f"soap_prompt_{role}",
         )
         prompt_updates[role] = {
             "id": prompt_data["id"],
@@ -344,12 +349,45 @@ with tab2:
             "original": prompt_data["prompt"],
         }
 
-        if st.button(f"Save {role} Prompt", key=f"save_{role}"):
+        if st.button(f"Save {role} SOAP Prompt", key=f"save_soap_{role}"):
             update_prompt(prompt_data["id"], new_text)
-            st.success(f"{role} prompt updated successfully!")
+            st.success(f"{role} SOAP prompt updated successfully!")
 
-# Tab 3: Report Generation
+# Tab 3: Chat Prompt Management
 with tab3:
+    st.header("Chat Prompt Management")
+    
+    # Fetch data
+    chat_prompts = fetch_chat_prompts()
+    
+    # Group prompts by role for easier display
+    chat_prompts_by_role = {}
+    for prompt in chat_prompts:
+        role_name = get_role_name(prompt["role"])
+        chat_prompts_by_role[role_name] = prompt
+
+    # Create columns for prompts
+    chat_prompt_updates = {}
+    for role, prompt_data in chat_prompts_by_role.items():
+        st.subheader(f"{role} Chat Prompt")
+        new_text = st.text_area(
+            f"Chat Prompt for {role}",
+            value=prompt_data["prompt"],
+            height=150,
+            key=f"chat_prompt_{role}",
+        )
+        chat_prompt_updates[role] = {
+            "id": prompt_data["id"],
+            "text": new_text,
+            "original": prompt_data["prompt"],
+        }
+
+        if st.button(f"Save {role} Chat Prompt", key=f"save_chat_{role}"):
+            update_prompt(prompt_data["id"], new_text)
+            st.success(f"{role} chat prompt updated successfully!")
+
+# Tab 4: Report Generation
+with tab4:
     st.header("Report Generation")
     
     sessions = fetch_sessions()
