@@ -11,11 +11,12 @@ def check_password():
 
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == st.secrets.get("app_password", ""):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the password in session state
-        else:
-            st.session_state["password_correct"] = False
+        if "password" in st.session_state:
+            if st.session_state["password"] == st.secrets.get("app_password", ""):
+                st.session_state["password_correct"] = True
+                del st.session_state["password"]  # Don't store the password in session state
+            else:
+                st.session_state["password_correct"] = False
 
     # Return True if the password is validated.
     if st.session_state.get("password_correct", False):
@@ -25,7 +26,7 @@ def check_password():
     st.text_input(
         "Password", type="password", on_change=password_entered, key="password"
     )
-    if "password_correct" in st.session_state:
+    if "password_correct" in st.session_state and not st.session_state.get("password_correct", False):
         st.error("😕 Password incorrect")
     return False
 
@@ -234,6 +235,12 @@ def update_prompt(prompt_id, new_text):
         "id", prompt_id
     ).execute()
 
+# Update a chat prompt in the database
+def update_chat_prompt(prompt_id, new_text):
+    supabase.table("chat_prompts").update({"prompt": new_text}).eq(
+        "id", prompt_id
+    ).execute()
+
 
 # Streamlit app layout
 st.title("Admin Session and Prompt Manager")
@@ -383,7 +390,7 @@ with tab3:
         }
 
         if st.button(f"Save {role} Chat Prompt", key=f"save_chat_{role}"):
-            update_prompt(prompt_data["id"], new_text)
+            update_chat_prompt(prompt_data["id"], new_text)
             st.success(f"{role} chat prompt updated successfully!")
 
 # Tab 4: Report Generation
