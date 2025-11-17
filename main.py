@@ -228,6 +228,11 @@ def fetch_chat_prompts():
     response = supabase.table("chat_prompts").select("id, role, prompt").execute()
     return response.data
 
+# Fetch suggestions prompts from the database
+def fetch_suggestions_prompts():
+    response = supabase.table("suggestions_prompts").select("id, role, prompt").execute()
+    return response.data
+
 
 # Update a prompt in the database
 def update_prompt(prompt_id, new_text):
@@ -241,12 +246,18 @@ def update_chat_prompt(prompt_id, new_text):
         "id", prompt_id
     ).execute()
 
+# Update a suggestions prompt in the database
+def update_suggestions_prompt(prompt_id, new_text):
+    supabase.table("suggestions_prompts").update({"prompt": new_text}).eq(
+        "id", prompt_id
+    ).execute()
+
 
 # Streamlit app layout
 st.title("Admin Session and Prompt Manager")
 
 # Create tabs for better organization
-tab1, tab2, tab3, tab4 = st.tabs(["📧 User Invitations", "📝 SOAP Prompt Management", "💬 Chat Prompt Management", "📊 Report Generation"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📧 User Invitations", "📝 SOAP Prompt Management", "💬 Chat Prompt Management", "💡 Suggestions Prompt Management", "📊 Report Generation"])
 
 # Tab 1: User Invitations
 with tab1:
@@ -393,8 +404,41 @@ with tab3:
             update_chat_prompt(prompt_data["id"], new_text)
             st.success(f"{role} chat prompt updated successfully!")
 
-# Tab 4: Report Generation
+# Tab 4: Suggestions Prompt Management
 with tab4:
+    st.header("Suggestions Prompt Management")
+    
+    # Fetch data
+    suggestions_prompts = fetch_suggestions_prompts()
+    
+    # Group prompts by role for easier display
+    suggestions_prompts_by_role = {}
+    for prompt in suggestions_prompts:
+        role_name = get_role_name(prompt["role"])
+        suggestions_prompts_by_role[role_name] = prompt
+
+    # Create columns for prompts
+    suggestions_prompt_updates = {}
+    for role, prompt_data in suggestions_prompts_by_role.items():
+        st.subheader(f"{role} Suggestions Prompt")
+        new_text = st.text_area(
+            f"Suggestions Prompt for {role}",
+            value=prompt_data["prompt"],
+            height=150,
+            key=f"suggestions_prompt_{role}",
+        )
+        suggestions_prompt_updates[role] = {
+            "id": prompt_data["id"],
+            "text": new_text,
+            "original": prompt_data["prompt"],
+        }
+
+        if st.button(f"Save {role} Suggestions Prompt", key=f"save_suggestions_{role}"):
+            update_suggestions_prompt(prompt_data["id"], new_text)
+            st.success(f"{role} suggestions prompt updated successfully!")
+
+# Tab 5: Report Generation
+with tab5:
     st.header("Report Generation")
     
     sessions = fetch_sessions()
