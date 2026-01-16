@@ -217,20 +217,24 @@ def fetch_session_transcripts(session_id):
         st.error(f"Error fetching transcripts for session {session_id}: {str(e)}")
         return []
 
+def fetch_workspace():
+    response = supabase.table("workspace").select("id, name").execute()
+    return response.data
+
 
 # Fetch prompts from the database
 def fetch_prompts():
-    response = supabase.table("soap_prompts").select("id, role, prompt").execute()
+    response = supabase.table("soap_prompts").select("id, role, prompt, workspace_id").execute()
     return response.data
 
 # Fetch chat prompts from the database
 def fetch_chat_prompts():
-    response = supabase.table("chat_prompts").select("id, role, prompt").execute()
+    response = supabase.table("chat_prompts").select("id, role, prompt, workspace_id").execute()
     return response.data
 
 # Fetch suggestions prompts from the database
 def fetch_suggestions_prompts():
-    response = supabase.table("suggestions_prompts").select("id, role, prompt").execute()
+    response = supabase.table("suggestions_prompts").select("id, role, prompt, workspace_id").execute()
     return response.data
 
 
@@ -342,100 +346,184 @@ with tab1:
 with tab2:
     st.header("SOAP Prompt Management")
     
-    # Fetch data
-    prompts = fetch_prompts()
+    # Fetch workspace data
+    workspaces = fetch_workspace()
     
-    # Group prompts by role for easier display
-    prompts_by_role = {}
-    for prompt in prompts:
-        role_name = get_role_name(prompt["role"])
-        prompts_by_role[role_name] = prompt
-
-    # Create columns for prompts
-    prompt_updates = {}
-    for role, prompt_data in prompts_by_role.items():
-        st.subheader(f"{role} SOAP Prompt")
-        new_text = st.text_area(
-            f"SOAP Prompt for {role}",
-            value=prompt_data["prompt"],
-            height=150,
-            key=f"soap_prompt_{role}",
+    # Workspace dropdown at the top
+    if workspaces:
+        workspace_options = {ws["id"]: ws["name"] for ws in workspaces}
+        selected_workspace_id = st.selectbox(
+            "Select Workspace",
+            options=list(workspace_options.keys()),
+            format_func=lambda x: workspace_options[x],
+            key="workspace_selector"
         )
-        prompt_updates[role] = {
-            "id": prompt_data["id"],
-            "text": new_text,
-            "original": prompt_data["prompt"],
-        }
+        
+        # Display selected workspace info
+        selected_workspace = next((ws for ws in workspaces if ws["id"] == selected_workspace_id), None)
+        if selected_workspace:
+            st.info(f"📋 Selected Workspace: {selected_workspace['name']}")
+        
+        st.divider()
+        
+        # Fetch prompts filtered by workspace_id
+        prompts = fetch_prompts()
+        
+        # Filter prompts by selected workspace
+        workspace_prompts = [p for p in prompts if p.get("workspace_id") == selected_workspace_id]
+        
+        if not workspace_prompts:
+            st.warning(f"No SOAP prompts found for workspace: {selected_workspace['name']}")
+        else:
+            # Group prompts by role for easier display
+            prompts_by_role = {}
+            for prompt in workspace_prompts:
+                role_name = get_role_name(prompt["role"])
+                prompts_by_role[role_name] = prompt
 
-        if st.button(f"Save {role} SOAP Prompt", key=f"save_soap_{role}"):
-            update_prompt(prompt_data["id"], new_text)
-            st.success(f"{role} SOAP prompt updated successfully!")
+            # Create columns for prompts
+            prompt_updates = {}
+            for role, prompt_data in prompts_by_role.items():
+                st.subheader(f"{role} SOAP Prompt")
+                new_text = st.text_area(
+                    f"SOAP Prompt for {role}",
+                    value=prompt_data["prompt"],
+                    height=150,
+                    key=f"soap_prompt_{role}_ws_{selected_workspace_id}",
+                )
+                prompt_updates[role] = {
+                    "id": prompt_data["id"],
+                    "text": new_text,
+                    "original": prompt_data["prompt"],
+                }
+
+                if st.button(f"Save {role} SOAP Prompt", key=f"save_soap_{role}_ws_{selected_workspace_id}"):
+                    update_prompt(prompt_data["id"], new_text)
+                    st.success(f"{role} SOAP prompt updated successfully!")
+    else:
+        st.warning("No workspaces found in the database")
 
 # Tab 3: Chat Prompt Management
 with tab3:
     st.header("Chat Prompt Management")
     
-    # Fetch data
-    chat_prompts = fetch_chat_prompts()
+    # Fetch workspace data
+    workspaces = fetch_workspace()
     
-    # Group prompts by role for easier display
-    chat_prompts_by_role = {}
-    for prompt in chat_prompts:
-        role_name = get_role_name(prompt["role"])
-        chat_prompts_by_role[role_name] = prompt
-
-    # Create columns for prompts
-    chat_prompt_updates = {}
-    for role, prompt_data in chat_prompts_by_role.items():
-        st.subheader(f"{role} Chat Prompt")
-        new_text = st.text_area(
-            f"Chat Prompt for {role}",
-            value=prompt_data["prompt"],
-            height=150,
-            key=f"chat_prompt_{role}",
+    # Workspace dropdown at the top
+    if workspaces:
+        workspace_options = {ws["id"]: ws["name"] for ws in workspaces}
+        selected_workspace_id = st.selectbox(
+            "Select Workspace",
+            options=list(workspace_options.keys()),
+            format_func=lambda x: workspace_options[x],
+            key="chat_workspace_selector"
         )
-        chat_prompt_updates[role] = {
-            "id": prompt_data["id"],
-            "text": new_text,
-            "original": prompt_data["prompt"],
-        }
+        
+        # Display selected workspace info
+        selected_workspace = next((ws for ws in workspaces if ws["id"] == selected_workspace_id), None)
+        if selected_workspace:
+            st.info(f"📋 Selected Workspace: {selected_workspace['name']}")
+        
+        st.divider()
+        
+        # Fetch prompts filtered by workspace_id
+        chat_prompts = fetch_chat_prompts()
+        
+        # Filter prompts by selected workspace
+        workspace_chat_prompts = [p for p in chat_prompts if p.get("workspace_id") == selected_workspace_id]
+        
+        if not workspace_chat_prompts:
+            st.warning(f"No chat prompts found for workspace: {selected_workspace['name']}")
+        else:
+            # Group prompts by role for easier display
+            chat_prompts_by_role = {}
+            for prompt in workspace_chat_prompts:
+                role_name = get_role_name(prompt["role"])
+                chat_prompts_by_role[role_name] = prompt
 
-        if st.button(f"Save {role} Chat Prompt", key=f"save_chat_{role}"):
-            update_chat_prompt(prompt_data["id"], new_text)
-            st.success(f"{role} chat prompt updated successfully!")
+            # Create columns for prompts
+            chat_prompt_updates = {}
+            for role, prompt_data in chat_prompts_by_role.items():
+                st.subheader(f"{role} Chat Prompt")
+                new_text = st.text_area(
+                    f"Chat Prompt for {role}",
+                    value=prompt_data["prompt"],
+                    height=150,
+                    key=f"chat_prompt_{role}_ws_{selected_workspace_id}",
+                )
+                chat_prompt_updates[role] = {
+                    "id": prompt_data["id"],
+                    "text": new_text,
+                    "original": prompt_data["prompt"],
+                }
+
+                if st.button(f"Save {role} Chat Prompt", key=f"save_chat_{role}_ws_{selected_workspace_id}"):
+                    update_chat_prompt(prompt_data["id"], new_text)
+                    st.success(f"{role} chat prompt updated successfully!")
+    else:
+        st.warning("No workspaces found in the database")
 
 # Tab 4: Suggestions Prompt Management
 with tab4:
     st.header("Suggestions Prompt Management")
     
-    # Fetch data
-    suggestions_prompts = fetch_suggestions_prompts()
+    # Fetch workspace data
+    workspaces = fetch_workspace()
     
-    # Group prompts by role for easier display
-    suggestions_prompts_by_role = {}
-    for prompt in suggestions_prompts:
-        role_name = get_role_name(prompt["role"])
-        suggestions_prompts_by_role[role_name] = prompt
-
-    # Create columns for prompts
-    suggestions_prompt_updates = {}
-    for role, prompt_data in suggestions_prompts_by_role.items():
-        st.subheader(f"{role} Suggestions Prompt")
-        new_text = st.text_area(
-            f"Suggestions Prompt for {role}",
-            value=prompt_data["prompt"],
-            height=150,
-            key=f"suggestions_prompt_{role}",
+    # Workspace dropdown at the top
+    if workspaces:
+        workspace_options = {ws["id"]: ws["name"] for ws in workspaces}
+        selected_workspace_id = st.selectbox(
+            "Select Workspace",
+            options=list(workspace_options.keys()),
+            format_func=lambda x: workspace_options[x],
+            key="suggestions_workspace_selector"
         )
-        suggestions_prompt_updates[role] = {
-            "id": prompt_data["id"],
-            "text": new_text,
-            "original": prompt_data["prompt"],
-        }
+        
+        # Display selected workspace info
+        selected_workspace = next((ws for ws in workspaces if ws["id"] == selected_workspace_id), None)
+        if selected_workspace:
+            st.info(f"📋 Selected Workspace: {selected_workspace['name']}")
+        
+        st.divider()
+        
+        # Fetch prompts filtered by workspace_id
+        suggestions_prompts = fetch_suggestions_prompts()
+        
+        # Filter prompts by selected workspace
+        workspace_suggestions_prompts = [p for p in suggestions_prompts if p.get("workspace_id") == selected_workspace_id]
+        
+        if not workspace_suggestions_prompts:
+            st.warning(f"No suggestions prompts found for workspace: {selected_workspace['name']}")
+        else:
+            # Group prompts by role for easier display
+            suggestions_prompts_by_role = {}
+            for prompt in workspace_suggestions_prompts:
+                role_name = get_role_name(prompt["role"])
+                suggestions_prompts_by_role[role_name] = prompt
 
-        if st.button(f"Save {role} Suggestions Prompt", key=f"save_suggestions_{role}"):
-            update_suggestions_prompt(prompt_data["id"], new_text)
-            st.success(f"{role} suggestions prompt updated successfully!")
+            # Create columns for prompts
+            suggestions_prompt_updates = {}
+            for role, prompt_data in suggestions_prompts_by_role.items():
+                st.subheader(f"{role} Suggestions Prompt")
+                new_text = st.text_area(
+                    f"Suggestions Prompt for {role}",
+                    value=prompt_data["prompt"],
+                    height=150,
+                    key=f"suggestions_prompt_{role}_ws_{selected_workspace_id}",
+                )
+                suggestions_prompt_updates[role] = {
+                    "id": prompt_data["id"],
+                    "text": new_text,
+                    "original": prompt_data["prompt"],
+                }
+
+                if st.button(f"Save {role} Suggestions Prompt", key=f"save_suggestions_{role}_ws_{selected_workspace_id}"):
+                    update_suggestions_prompt(prompt_data["id"], new_text)
+                    st.success(f"{role} suggestions prompt updated successfully!")
+    else:
+        st.warning("No workspaces found in the database")
 
 # Tab 5: Report Generation
 with tab5:
