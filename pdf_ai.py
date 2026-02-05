@@ -1,11 +1,12 @@
+from pathlib import Path
 import streamlit as st
-from supabase import create_client, Client
 from openai import OpenAI
-import asyncio
-from datetime import datetime
-import time
+import PyPDF2
 
-# Password protection
+
+# ============================================================
+# PASSWORD PROTECTION
+# ============================================================
 def check_password():
     """Returns True if the user had the correct password."""
 
@@ -33,3 +34,5 @@ def check_password():
 # Check password before running the rest of the app
 if not check_password():
     st.stop()  # Do not continue if check_password is not True.
+
+
