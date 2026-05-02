@@ -2,7 +2,7 @@ from pdfrw import PdfReader
 import json
 
 # Load the PDF template
-template = PdfReader("CR1-Blank-With-Fields.pdf")
+template = PdfReader("CR_APHP_Final_Template_V3.pdf")
 
 # Collect all field names
 fields = {}
