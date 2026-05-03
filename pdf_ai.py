@@ -39,9 +39,9 @@ if not check_password():
     st.stop()  # Do not continue if check_password is not True.
 
 
-# ============================================================
+# =============================================================
 # GITHUB UPLOAD FUNCTIONALITY
-# ============================================================
+# =============================================================
 def upload_to_github(file_content, filename, github_token, repo_name, branch="main"):
     """
     Upload a file to GitHub repository's public folder.
