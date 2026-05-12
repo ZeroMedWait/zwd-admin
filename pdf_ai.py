@@ -5,6 +5,7 @@ import PyPDF2
 import requests
 import base64
 from datetime import datetime
+from supabase import create_client, Client
 
 
 # ============================================================
@@ -37,6 +38,32 @@ def check_password():
 # Check password before running the rest of the app
 if not check_password():
     st.stop()  # Do not continue if check_password is not True.
+
+
+# ============================================================
+# SUPABASE SETUP
+# ============================================================
+supabase_url = st.secrets.get("supabase_url")
+supabase_key = st.secrets.get("supabase_key")
+
+if not supabase_url or not supabase_key:
+    st.error("Supabase credentials not found in secrets")
+    st.stop()
+
+supabase: Client = create_client(supabase_url, supabase_key)
+
+
+# ============================================================
+# WORKSPACE FUNCTIONS
+# ============================================================
+def fetch_workspace():
+    """Fetch all workspaces from the database"""
+    try:
+        response = supabase.table("workspace").select("id, name").execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Error fetching workspaces: {str(e)}")
+        return []
 
 
 # =============================================================
@@ -124,6 +151,27 @@ branch = st.sidebar.text_input(
     help="Branch to upload to (default: main)"
 )
 
+# Workspace selection
+st.header("Select Workspace")
+workspaces = fetch_workspace()
+
+if not workspaces:
+    st.error("⚠️ No workspaces found in the database. Please create a workspace first.")
+    st.stop()
+
+workspace_options = {ws["id"]: ws["name"] for ws in workspaces}
+selected_workspace_id = st.selectbox(
+    "Workspace",
+    options=list(workspace_options.keys()),
+    format_func=lambda x: f"{x} - {workspace_options[x]}",
+    help="Select the workspace for this PDF"
+)
+
+if selected_workspace_id:
+    st.info(f"📋 Selected Workspace: {workspace_options[selected_workspace_id]}")
+
+st.divider()
+
 # File uploader
 st.header("Upload PDF")
 uploaded_file = st.file_uploader(
@@ -160,7 +208,11 @@ if uploaded_file is not None:
     if not github_token or not repo_name:
         st.error("⚠️ Please configure GitHub Token and Repository in the sidebar first!")
     else:
-        st.write(f"**Destination:** `{repo_name}/public/{uploaded_file.name}`")
+        # Create filename with workspace ID prefix
+        workspace_filename = f"~{selected_workspace_id}~{uploaded_file.name}"
+        
+        st.write(f"**Workspace:** `{workspace_options[selected_workspace_id]}` (ID: {selected_workspace_id})")
+        st.write(f"**Destination:** `{repo_name}/public/{workspace_filename}`")
         st.write(f"**Branch:** `{branch}`")
         
         col1, col2 = st.columns([1, 3])
@@ -170,10 +222,10 @@ if uploaded_file is not None:
                     # Read file content
                     file_content = uploaded_file.getvalue()
                     
-                    # Upload to GitHub
+                    # Upload to GitHub with workspace-prefixed filename
                     success, message = upload_to_github(
                         file_content,
-                        uploaded_file.name,
+                        workspace_filename,
                         github_token,
                         repo_name,
                         branch

@@ -1035,6 +1035,7 @@ dependencies = [
     { name = "openai" },
     { name = "pypdf2" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "streamlit" },
     { name = "supabase" },
 ]
@@ -1044,6 +1045,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.57.0" },
     { name = "pypdf2", specifier = ">=3.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "streamlit", specifier = ">=1.47.1" },
     { name = "supabase", specifier = ">=2.17.0" },
 ]
